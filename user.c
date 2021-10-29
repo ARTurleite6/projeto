@@ -246,12 +246,8 @@ int compare_commit(const void *a, const void *b, void *param){
     return c2->repo_id - c1->repo_id;
 }
 
-struct avl_table *insert(void *user, struct avl_table *tree){
-    avl_insert(tree, (UserP)user);
-    return tree; 
-}
 
-struct avl_table *parse(char *buffer, int file_opened){
+void parse(char *buffer, int file_opened, struct avl_table **tree){
     char *token = NULL;
 
     //keep the line
@@ -267,22 +263,17 @@ struct avl_table *parse(char *buffer, int file_opened){
         token = strsep(&buffer, ";\n");
     }
     init_functions init[] = { init_commit, init_user, init_repos };
-    avl_comparison_func (*comp[]) = {compare_commit, compare_user, compare_repos};
-
-    struct avl_table *tree = NULL;
 
     void *user;
     if(is_line_ok(list_tokens, file_opened)){
         user = init[(file_opened / 5) - 1]();
         write_line(line, file_opened);
         passToStruct(list_tokens, user, file_opened);
-        tree = avl_create((comp[(file_opened / 5) - 1]), NULL, NULL);
-        tree = insert(user, tree);
+        avl_insert(*tree, user);
     }
         free(line);
         free_tokens(list_tokens, file_opened);
         free(list_tokens);
-        return tree;
 }
 
 struct avl_table *read_lines(FILE *file, int file_opened){
@@ -296,9 +287,11 @@ struct avl_table *read_lines(FILE *file, int file_opened){
     size_t linecapp = 0;
 
     struct avl_table *tree = NULL;
+    avl_comparison_func (*comp[]) = {compare_commit, compare_user, compare_repos};
+    tree = avl_create((comp[(file_opened / 5) - 1]), NULL, NULL);
 
     while(getline(&buffer, &linecapp, file) != -1){
-        tree = parse(buffer, file_opened);
+        parse(buffer, file_opened, &tree);
     }
     free(buffer);
 
@@ -320,7 +313,7 @@ print_tree_structure (const struct avl_node *node, int level)
   if (node == NULL)
     return;
 
-  printf ("%d",  ((UserP)node->avl_data)->id);
+  printf ("%d", *(int *) node->avl_data);
   if (node->avl_link[0] != NULL || node->avl_link[1] != NULL)
     {
       putchar ('(');
@@ -341,7 +334,7 @@ void
 print_whole_tree (const struct avl_table *tree, const char *title)
 {
   printf ("%s: ", title);
-  print_tree_structure (tree->avl_root, 2);
+  print_tree_structure (tree->avl_root, 0);
   putchar ('\n');
 }
 
@@ -353,7 +346,6 @@ int main(int argc, char *argv[]){
     }
 
     struct avl_table *user = read_lines(file, usercsv);    
-    print_whole_tree(user, "Users:");
     fclose(file);
 
     file = fopen("./entrada/commits.csv", "r");
@@ -361,6 +353,7 @@ int main(int argc, char *argv[]){
         perror("commits.csv");
     }
     struct avl_table *commit = read_lines(file, commitcsv);
+    printf("%zu\n", commit->avl_count);
     fclose(file);
 
 
