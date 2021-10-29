@@ -5,7 +5,7 @@
 #include "avl.h"
 
 typedef void *(*init_functions)();
-typedef int (*compare_function)(const void *a, const void *b, const void *param);
+typedef int (*compare_function)(const void *, const void *, const void *);
 
 typedef enum { id, login, type, created_at, followers, follower_list, following, following_list, public_gists, public_repos } TYPE_USER;
 
@@ -17,8 +17,8 @@ typedef enum { year, month, day, hours, minutes, seconds } DATE;
 
 typedef struct line_commit{
     int repo_id;
-    char *author_id;
-    char *committer_id;
+    int author_id;
+    int committer_id;
     char *commit_at;
     char *message;
 } *CommitP;
@@ -146,8 +146,8 @@ void passToStruct(char *list_tokens[], void *line, int file_opened){
     else if(file_opened == commitcsv){
         CommitP commit = (CommitP)line;
         commit->repo_id = atoi(list_tokens[repo_id]);
-        commit->author_id = strdup(list_tokens[id]);
-        commit->committer_id = strdup(list_tokens[committer_id]);
+        commit->author_id = atoi(list_tokens[id]);
+        commit->committer_id = atoi(list_tokens[committer_id]);
         commit->commit_at = strdup(list_tokens[commit_at]);
         commit->message = strdup(list_tokens[message]);
     }
@@ -226,19 +226,29 @@ char **list_tokens_init(int file_opened){
 }
 
 void *init_repos(){
+    
+}
+
+int compare_user(const void *a, const void *b, void *param){
+    const UserP u1 = (UserP)a;
+    const UserP u2 = (UserP)b;
+
+    return u2->id - u1->id;
+}
+
+int compare_repos(const void *a, const void *b, void *param){
 
 }
 
-int compare_user(const void *a, const void *b, const void *param){
-
+int compare_commit(const void *a, const void *b, void *param){
+    const CommitP c1 = (CommitP)a;
+    const CommitP c2 = (CommitP)b;
+    return c2->repo_id - c1->repo_id;
 }
 
-int compare_repos(const void *a, const void *b, const void *param){
-
-}
-
-int compare_commit(const void *a, const void *b, const void *param){
-
+struct avl_table *insert(void *user, struct avl_table *tree){
+    avl_insert(tree, (UserP)user);
+    return tree; 
 }
 
 struct avl_table *parse(char *buffer, int file_opened){
@@ -256,20 +266,23 @@ struct avl_table *parse(char *buffer, int file_opened){
         type++;
         token = strsep(&buffer, ";\n");
     }
-
     init_functions init[] = { init_commit, init_user, init_repos };
-    compare_function comp[] = {compare_commit, compare_user, compare_repos};
+    avl_comparison_func (*comp[]) = {compare_commit, compare_user, compare_repos};
+
+    struct avl_table *tree = NULL;
 
     void *user;
     if(is_line_ok(list_tokens, file_opened)){
         user = init[(file_opened / 5) - 1]();
         write_line(line, file_opened);
         passToStruct(list_tokens, user, file_opened);
-        //*users = insert(user, *users);
+        tree = avl_create((comp[(file_opened / 5) - 1]), NULL, NULL);
+        tree = insert(user, tree);
     }
         free(line);
         free_tokens(list_tokens, file_opened);
         free(list_tokens);
+        return tree;
 }
 
 struct avl_table *read_lines(FILE *file, int file_opened){
@@ -282,14 +295,54 @@ struct avl_table *read_lines(FILE *file, int file_opened){
 
     size_t linecapp = 0;
 
-    struct avl_table *users = NULL;
+    struct avl_table *tree = NULL;
 
     while(getline(&buffer, &linecapp, file) != -1){
-        users = parse(buffer, file_opened);
+        tree = parse(buffer, file_opened);
     }
     free(buffer);
 
-    return users;
+    return tree;
+}
+
+static void
+print_tree_structure (const struct avl_node *node, int level)
+{
+  /* You can set the maximum level as high as you like.
+     Most of the time, you'll want to debug code using small trees,
+     so that a large |level| indicates a ``loop'', which is a bug. */
+  if (level > 16)
+    {
+      printf ("[...]");
+      return;
+    }
+
+  if (node == NULL)
+    return;
+
+  printf ("%d",  ((UserP)node->avl_data)->id);
+  if (node->avl_link[0] != NULL || node->avl_link[1] != NULL)
+    {
+      putchar ('(');
+
+      print_tree_structure (node->avl_link[0], level + 1);
+      if (node->avl_link[1] != NULL)
+        {
+          putchar (',');
+          print_tree_structure (node->avl_link[1], level + 1);
+        }
+
+      putchar (')');
+    }
+}
+
+/* Prints the entire structure of |tree| with the given |title|. */
+void
+print_whole_tree (const struct avl_table *tree, const char *title)
+{
+  printf ("%s: ", title);
+  print_tree_structure (tree->avl_root, 2);
+  putchar ('\n');
 }
 
 int main(int argc, char *argv[]){
@@ -299,17 +352,17 @@ int main(int argc, char *argv[]){
         perror("users.csv");
     }
 
-    read_lines(file, usercsv);    
+    struct avl_table *user = read_lines(file, usercsv);    
+    print_whole_tree(user, "Users:");
     fclose(file);
 
     file = fopen("./entrada/commits.csv", "r");
     if(!file){
         perror("commits.csv");
     }
-    read_lines(file, commitcsv);
+    struct avl_table *commit = read_lines(file, commitcsv);
     fclose(file);
 
-    //freeUsers(users);
 
     return 0;
 }
